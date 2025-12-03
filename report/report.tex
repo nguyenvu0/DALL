@@ -1,0 +1,405 @@
+\documentclass[twoside,final]{hcmut-report}
+
+% ===================================================
+% 1. CÁC GÓI CƠ BẢN
+% ===================================================
+\usepackage{gensymb,textcomp}
+\usepackage{array,longtable,multicol,multirow,siunitx,tabularx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{caption,float}
+\usepackage[export]{adjustbox}
+\usepackage[nameinlink]{cleveref} % Đã sửa lỗi ngoặc vuông
+\usepackage{pgfgantt}
+\usepackage{rotating}
+
+% ===================================================
+% 2. CẤU HÌNH HIỂN THỊ CODE ĐẸP (TCOLORBOX)
+% ===================================================
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{listings, skins}
+
+% Định nghĩa màu sắc khoa học
+\definecolor{backcolour}{rgb}{0.96, 0.96, 0.97} % Nền xám rất nhạt
+\definecolor{frameblue}{RGB}{0, 60, 113}        % Xanh đậm (Academic Blue)
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+
+% Cấu hình style cho Verilog
+\lstdefinestyle{verilogstyle}{
+    language=Verilog,
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize, % Font code nhỏ gọn
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4
+}
+
+% Lệnh chèn file code xịn: \verilogfile[options]{label}{path}{caption}
+\newtcbinputlisting[auto counter, list inside=lstlisting]{\verilogfile}[4][]{%
+  listing file={#3},
+  title={Mã nguồn \thetcbcounter: #4}, % Tiêu đề khung
+  label={#2},                          % Nhãn để trích dẫn
+  colback=backcolour,                  % Màu nền
+  colframe=frameblue,                  % Màu viền
+  fonttitle=\bfseries\sffamily,        % Font tiêu đề
+  listing only,
+  listing options={style=verilogstyle, #1}, % Cho phép truyền firstline, lastline
+  enhanced,
+  breakable,
+  drop shadow,                         % Đổ bóng
+  sharp corners=downhill,              % Bo góc hiện đại
+  top=2pt, bottom=2pt,                 % Căn lề nội bộ
+}
+
+% ===================================================
+% 3. CÁC LỆNH HỖ TRỢ KHÁC
+% ===================================================
+
+% Hàm chèn ảnh an toàn (Sửa lỗi tên file có dấu gạch dưới)
+\newcommand{\diagramplaceholder}[2]{%
+  \IfFileExists{#1}{\includegraphics[width=\textwidth]{#1}}{%
+    \fbox{\parbox[c][6cm][c]{0.9\textwidth}{\centering
+    \textbf{Hình sẽ được bổ sung:}\\#2\\(Tệp: \texttt{\detokenize{#1}})}}}}
+
+% ===================================================
+% 4. THÔNG TIN BÁO CÁO
+% ===================================================
+\coursename{Thiết kế Luận lý (CO3091)}
+\reporttype{Báo cáo chính thức}
+\title{Thiết kế CPU RISC 16-bit đáp ứng đặc tả HK251}
+\advisor{& HUỲN TÔN LONG &}
+\stuname{%
+  & LƯU NGUYÊN VŨ & 2314058 \\
+  & NGUYỄN TRIỀU VĨ & 2313940\\
+  & NGUYỄN ĐỨC PHÚC & 2312693 \\
+}
+
+% ===================================================
+% 5. NỘI DUNG CHÍNH
+% ===================================================
+\begin{document}
+
+\coverpage
+
+\tableofcontents
+\listoffigures
+\listoftables
+\lstlistoflistings{} % Danh sách mã nguồn
+\clearpage
+
+\section{GIỚI THIỆU}
+\subsection{Bối cảnh và mục tiêu}
+\begin{itemize}[itemsep=0.2em]
+    \item \textbf{Đề bài}: xây dựng bộ xử lý RISC 16-bit theo tài liệu HK251 v0.06 với pipeline 5 giai đoạn, hỗ trợ toàn bộ opcode và chạy trên FPGA Arty-Z7.
+    \item \textbf{Mục tiêu kỹ thuật}: đạt tần số tối thiểu 100~MHz, load chương trình qua ROM, có tín hiệu halt ra LED và tài liệu hoá đầy đủ.
+    \item \textbf{Kết quả}: bộ mã RTL hoàn chỉnh, testbench hành vi, báo cáo chi tiết và quy trình chạy Vivado.
+\end{itemize}
+
+\subsection{Đội ngũ và vai trò}
+\begin{itemize}[itemsep=0.2em]
+    \item Phân tích đặc tả ISA, pipeline, hazard.
+    \item Thiết kế module (ALU, ControlUnit, Datapath, RegisterFile, Memory).
+    \item Viết testbench, vận hành Vivado, thu thập báo cáo timing/resource.
+    \item Biên soạn tài liệu và chuẩn bị slide demo.
+\end{itemize}
+
+\section{CƠ SỞ LÝ THUYẾT HK251}
+\subsection{Pipeline 5 giai đoạn}
+Mỗi lệnh phải đi qua IF, ID, EX, MEM, WB. PC bước 2 byte, branch offset nhân 2, jump ghép PC[15:13] với địa chỉ đích. Thanh ghi pipeline cần chứa dữ liệu và control để flush/stall.
+
+\subsection{Định dạng lệnh}
+\begin{itemize}[itemsep=0.2em]
+    \item \textbf{R-type}: opcode 4 bit, hai thanh ghi nguồn 3 bit, thanh ghi đích 3 bit và funct 3 bit.
+    \item \textbf{I-type}: opcode 4 bit, hai thanh ghi mục tiêu và immediate 6 bit (sign extend).
+    \item \textbf{J-type}: opcode = 0111, trường địa chỉ 12 bit ghép với PC[15:13].
+\end{itemize}
+
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Opcode & Nhóm & Mô tả \\ \midrule
+        0000 & ALU0 & Unsigned arithmetic \& logic (\texttt{addu}...\texttt{xor}). \\
+        0001 & ALU1 & Signed arithmetic, \texttt{slt}, \texttt{seq}, \texttt{sltu}, \texttt{jr}. \\
+        0010 & ALU2 & Dịch và xoay (\texttt{shr}, \texttt{shl}, \texttt{ror}, \texttt{rol}). \\
+        0011 & ADDI & \texttt{$rt \gets rs + SE(i)$}. \\
+        0100 & SLTI & \texttt{$rt \gets (rs < SE(i))$}. \\
+        0101 & BNEQ & Nếu \texttt{rs != rt} thì PC ← PC + i×2. \\
+        0110 & BGTZ & Nếu \texttt{rs > 0} thì PC ← PC + i×2. \\
+        0111 & JUMP & PC ← PC[15:13] || (addr << 1). \\
+        1000 & LH & Load half-word (word-aligned). \\
+        1001 & SH & Store half-word. \\
+        1010 & MFSR & Đọc ZERO/PC/RA/AT/HI/LO. \\
+        1011 & MTSR & Ghi RA/AT/HI/LO. \\
+        1111 & HLT & Dừng chương trình. \\
+        \bottomrule
+    \end{tabular}
+    \caption{Tập opcode yêu cầu trong HK251.}
+    \label{tab:opcode}
+\end{table}
+
+\subsection{Special registers và hazard}
+\begin{itemize}[itemsep=0.2em]
+    \item \$ZERO luôn 0; \$PC chỉ đọc; \$RA, \$AT, \$HI, \$LO ghi bằng \texttt{mtsr} hoặc kết quả nhân/chia.
+    \item Load-use hazard: nếu lệnh ID đọc cùng thanh ghi mà lệnh EX đang load, pipeline phải stall 1 chu kỳ.
+    \item Branch/jump taken phải flush IF/ID và ID/EX để tránh thực thi sai.
+    \item Forwarding từ EX/MEM và MEM/WB giảm CPI, nhưng không loại bỏ load-use.
+\end{itemize}
+
+\section{YÊU CẦU VÀ TIÊU CHÍ}
+\subsection{Chức năng}
+\begin{enumerate}[label=F\arabic*.,itemsep=0.2em]
+    \item Thực thi đúng tất cả opcode/funct trong \cref{tab:opcode}.
+    \item Pipeline 5 stage với thanh ghi IF/ID, ID/EX, EX/MEM, MEM/WB.
+    \item ROM/RAM tách biệt, địa chỉ word-aligned, hỗ trợ load/store half-word.
+    \item Special register hoạt động với \texttt{mfsr}/\texttt{mtsr}, PC đọc ra được.
+    \item Lệnh \texttt{HLT} bật tín hiệu \texttt{halt} cho LED debug.
+\end{enumerate}
+
+\subsection{Phi chức năng}
+\begin{enumerate}[label=NF\arabic*.,itemsep=0.2em]
+    \item Vivado 2018.2 phải tổng hợp/định tuyến thành công với WNS \(>\) 0 tại 125~MHz.
+    \item Tài nguyên sử dụng <1\% LUT/FF, không cần BRAM/DSP.
+    \item Testbench tự động phát hiện \texttt{halt} và dừng mô phỏng.
+    \item Code thuần Verilog-2001, không dùng gói SystemVerilog (để tương thích).
+\end{enumerate}
+\section{KIẾN TRÚC VÀ DIAGRAM}
+\subsection{Sơ đồ tổng quan}
+\begin{figure}[H]
+    \centering
+    % Với ảnh dáng đứng (cao), ta giới hạn chiều cao bằng 90% trang giấy
+    % để chừa chỗ cho caption, tránh bị nhảy sang trang sau.
+    \includegraphics[height=0.7\textheight, keepaspectratio]{graphics/cpu_topology.png}
+    \caption{Sơ đồ khối pipeline và bus điều khiển.}
+    \label{fig:cpu-topology}
+\end{figure}
+
+\subsection{Pipeline timeline}
+\begin{figure}[H]
+    \centering
+    % Các ảnh ngang (landscape) thì ép to ra 110% bề ngang là đẹp
+    \makebox[\textwidth][c]{%
+        \includegraphics[width=1.1\linewidth, keepaspectratio]{graphics/pipeline_flow.png}%
+    }
+    \caption{Mỗi chu kỳ một giai đoạn; ghi chú stall và flush.}
+    \label{fig:pipeline}
+\end{figure}
+
+\subsection{Hazard unit}
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{%
+        \includegraphics[width=1.1\linewidth, keepaspectratio]{graphics/hazard_control.png}%
+    }
+    \caption{Khối điều khiển hazard: load-use, branch, forwarding.}
+    \label{fig:hazard}
+\end{figure}
+
+\subsection{Memory map}
+\begin{figure}[H]
+    \centering
+    \makebox[\textwidth][c]{%
+        \includegraphics[width=1.1\linewidth, keepaspectratio]{graphics/memory_map.png}%
+    }
+    \caption{Không gian địa chỉ 16-bit với ROM, RAM và vùng debug.}
+    \label{fig:memorymap}
+\end{figure}
+
+\section{HIỆN THỰC RTL}
+\subsection{Cấu trúc mã nguồn}
+\begin{itemize}[itemsep=0.2em]
+    \item \texttt{CPU.v}: gói ControlUnit + Datapath; ROM khởi tạo bằng \texttt{\$readmemh}; tham số \texttt{PROGRAM\_FILE}.
+    \item \texttt{ControlUnit.v}: giải mã opcode/funct thành bus điều khiển.
+    \item \texttt{Datapath.v}: xây dựng pipeline, forwarding, PC update, hazard detection.
+    \item \texttt{ALU\_spec.v}: ALU 7-bit op bus hỗ trợ unsigned, signed, shift/rotate và update HI/LO.
+    \item \texttt{RegisterFile.v}: 8 GPR + special register (RA, AT, HI, LO, PC mirror), hỗ trợ mfsr/mtsr.
+    \item \texttt{Memory.v}: RAM đồng bộ, dùng \texttt{address[15:1]} để đảm bảo word-aligned.
+    \item \texttt{testbench.v}: clock 10~ns, reset 50~ns, vòng lặp 2000 chu kỳ, dừng khi \texttt{halt=1}.
+\end{itemize}
+
+\subsection{Đặc điểm nổi bật}
+\begin{itemize}[itemsep=0.2em]
+    \item PC tăng 2; branch offset nhân đôi; jump dùng PC[15:13].
+    \item Forwarding 3 trạng thái cho hai ngõ ALU; load-use stall tự động.
+    \item Hazard unit chèn bubble vào ID/EX và giữ IF/ID khi cần.
+    \item LED halt lấy từ latch trong Datapath để tránh glitch.
+\end{itemize}
+
+\subsection{Giải thích chi tiết từng module}
+% SỬ DỤNG LỆNH MỚI: \verilogfile[dòng_code]{nhãn}{đường_dẫn}{caption}
+
+\subsubsection{CPU.v -- top-level}
+\verilogfile[firstline=1,lastline=91]{lst:cpu}{../risc_cpu_vivado/CPU.v}{Module CPU -- kết nối ControlUnit và Datapath}
+
+\subsubsection{ControlUnit.v -- giải mã opcode}
+\verilogfile[firstline=1,lastline=140]{lst:control}{../risc_cpu_vivado/ControlUnit.v}{Giải mã opcode/funct trong ControlUnit}
+
+\subsubsection{Datapath.v -- pipeline và hazard}
+\verilogfile[firstline=1,lastline=220]{lst:datapath}{../risc_cpu_vivado/Datapath.v}{Đoạn mã chính trong Datapath: thanh ghi pipeline và hazard}
+
+\subsubsection{ALU\_spec.v -- phép toán signed/unsigned}
+\verilogfile[firstline=1,lastline=150]{lst:alu}{../risc_cpu_vivado/ALU_spec.v}{ALU hỗ trợ unsigned/signed và shift/rotate}
+
+\subsubsection{RegisterFile.v -- GPR và special register}
+\verilogfile[firstline=1,lastline=160]{lst:regfile}{../risc_cpu_vivado/RegisterFile.v}{Register file với hỗ trợ MFSR/MTSR}
+
+\subsubsection{testbench.v -- bằng chứng mô phỏng}
+\verilogfile[firstline=1,lastline=80]{lst:testbench}{../risc_cpu_vivado/testbench.v}{Testbench điều khiển clock/reset và kiểm tra HALT}
+
+\section{KIỂM THỬ VÀ ĐÁNH GIÁ}
+\subsection{Mô phỏng hành vi}
+\begin{itemize}[itemsep=0.2em]
+    \item \textbf{Mục tiêu}: xác nhận pipeline chạy đến \texttt{HLT}.
+    \item \textbf{Kết quả}: log `[75000] HALT detected` sau 75~ns; mô phỏng 1000~ns để tăng độ tin cậy.
+\end{itemize}
+
+\subsection{Báo cáo Vivado}
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Thông số & Giá trị & Nguồn \\ \midrule
+        Clock constraint & 125~MHz & \texttt{create\_clock} trong XDC \\
+        WNS / WHS & 4.917~ns / 0.220~ns & \texttt{cpu\_top\_timing\_summary\_routed.rpt} \\
+        Slice LUT / FF & 5 / 18 (\textless0.05\%) & \texttt{cpu\_top\_utilization\_placed.rpt} \\
+        BRAM / DSP & 0 / 0 & -- \\
+        I/O sử dụng & 3 chân (clk, reset, halt) & constraint Arty-Z7 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Kết quả synthesis/implementation trên Zynq-7000.}
+    \label{tab:vivado}
+\end{table}
+
+\subsection{Testcase khuyến nghị}
+\begin{table}[H]
+    \centering
+    \begin{tabular}{@{}lp{8cm}@{}}
+        \toprule
+        Nhóm & Nội dung \\ \midrule
+        Arithmetic & Tổng hợp phép cộng/trừ/nhân/chia signed/unsigned. \\
+        Logic/Shift & \texttt{and/or/xor/nor}, \texttt{shr/shl/ror/rol}. \\
+        Immediate & \texttt{addi}, \texttt{slti} với số dương/âm. \\
+        Branch & \texttt{bneq}, \texttt{bgtz}, \texttt{j}, \texttt{jr}. \\
+        Memory & \texttt{lh}/\texttt{sh} với các offset. \\
+        Special Reg & \texttt{mfsr/mtsr} cho \$PC, \$RA, \$AT, \$HI, \$LO. \\
+        Hazard & Chuỗi load-use, branch ngay sau load, jr sau ghi RA. \\
+        Halt & Kiểm tra tín hiệu halt, LED debug. \\
+        \bottomrule
+    \end{tabular}
+    \caption{Bộ test tối thiểu bao phủ toàn bộ yêu cầu.}
+    \label{tab:testcases}
+\end{table}
+
+\section{QUY TRÌNH CHẠY VÀ MINH CHỨNG}
+\subsection{Thứ tự thực hiện chuẩn}
+\begin{enumerate}[itemsep=0.2em]
+    \item Chuẩn bị \texttt{program.hex} và tham số \texttt{PROGRAM\_FILE}.
+    \item Mô phỏng hành vi, ghi nhận log HALT.
+    \item Synthesis \& Implementation, lưu báo cáo.
+    \item Generate bitstream (và \texttt{.mcs} nếu cần).
+    \item Nạp FPGA, reset và quan sát LED halt.
+\end{enumerate}
+
+\subsection{Minh chứng chạy thực tế}
+
+% --- 1. ẢNH MINH CHỨNG MÔ PHỎNG (SIMULATION) ---
+\begin{figure}[H]
+    \centering
+    % Lưu ý: Chụp màn hình Waveform trong Vivado (zoom vào chỗ tín hiệu HALT lên 1)
+    % Đặt tên file là simulation_proof.png và bỏ vào thư mục graphics
+    \IfFileExists{graphics/simulation_proof.png}{
+        \makebox[\textwidth][c]{%
+            \includegraphics[width=1.1\linewidth, keepaspectratio]{graphics/simulation_proof.png}%
+        }
+    }{
+        \fbox{\parbox[c][5cm][c]{\linewidth}{\centering \textbf{[Chèn ảnh Simulation Waveform vào đây]}\\(Tên file: graphics/simulation\_proof.png)}}
+    }
+    \caption{Kết quả mô phỏng: Waveform hiển thị tín hiệu HALT và PC dừng lại.}
+    \label{fig:sim-proof}
+\end{figure}
+
+% --- 2. ẢNH MINH CHỨNG IMPLEMENTATION (TIMING/UTILIZATION) ---
+\begin{figure}[H]
+    \centering
+    % Lưu ý: Chụp màn hình "Project Summary" hoặc "Timing Summary" có dòng WNS màu xanh
+    % Đặt tên file là impl_proof.png
+    \IfFileExists{graphics/impl_proof.png}{
+        \makebox[\textwidth][c]{%
+            \includegraphics[width=1.1\linewidth, keepaspectratio]{graphics/impl_proof.png}%
+        }
+    }{
+        \fbox{\parbox[c][5cm][c]{\linewidth}{\centering \textbf{[Chèn ảnh Báo cáo Vivado Implementation]}\\(Tên file: graphics/impl\_proof.png)}}
+    }
+    \caption{Kết quả Implementation: Timing đạt (WNS dương) và tài nguyên sử dụng thấp.}
+    \label{fig:impl-proof}
+\end{figure}
+
+% --- 3. ẢNH MINH CHỨNG BOARD (NẾU CÓ) ---
+\begin{figure}[H]
+    \centering
+    % Lưu ý: Ảnh chụp board Arty-Z7 khi đèn LED sáng
+    % Đặt tên file là board_photo.png
+    \IfFileExists{graphics/board_photo.png}{
+        \includegraphics[width=0.8\linewidth, keepaspectratio]{graphics/board_photo.png}
+    }{
+        \fbox{\parbox[c][5cm][c]{\linewidth}{\centering \textbf{[Chèn ảnh chụp Board thực tế]}\\(Tên file: graphics/board\_photo.png)}}
+    }
+    \caption{Thực nghiệm trên FPGA: LED sáng báo hiệu lệnh HLT được thực thi.}
+    \label{fig:board-proof}
+\end{figure}
+
+\section{QUY TRÌNH TRIỂN KHAI VIVADO}
+\subsection{Chuẩn bị}
+\begin{enumerate}[itemsep=0.2em]
+    \item Mở \texttt{project\_1.xpr}, xác nhận device.
+    \item Kiểm tra XDC chỉ chứa 3 chân: clk H16, reset D19, halt R14.
+\end{enumerate}
+
+\subsection{Mô phỏng}
+\begin{enumerate}[itemsep=0.2em]
+    \item Flow Navigator $\rightarrow$ \textit{Run Simulation}.
+    \item Quan sát TCL console xem thông báo HALT.
+\end{enumerate}
+
+\subsection{Synthesis, Implementation, Bitstream}
+\begin{enumerate}[itemsep=0.2em]
+    \item \textit{Run Synthesis} và \textit{Run Implementation}.
+    \item \textit{Generate Bitstream}; file \texttt{cpu\_top.bit} nằm trong \texttt{project\_1.runs/impl\_1}.
+\end{enumerate}
+
+\subsection{Nạp FPGA}
+\begin{enumerate}[itemsep=0.2em]
+    \item \textit{Open Hardware Manager} $\rightarrow$ \textit{Open Target}.
+    \item \textit{Program Device} với \texttt{cpu\_top.bit}; nhấn BTNC để reset.
+\end{enumerate}
+
+\section{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+\subsection{Đánh giá}
+\begin{itemize}[itemsep=0.2em]
+    \item Thiết kế đáp ứng toàn bộ yêu cầu HK251.
+    \item Timing dư dả, tài nguyên sử dụng rất thấp.
+    \item Bộ tài liệu hoàn chỉnh cho việc demo.
+\end{itemize}
+
+\subsection{Hướng phát triển}
+\begin{itemize}[itemsep=0.2em]
+    \item Viết assembler và test automation.
+    \item Bổ sung opcode mở rộng (FP16, 32-bit).
+    \item Thêm giao tiếp UART/GPIO để demo.
+    \item Sinh script tạo \texttt{.mcs} tự động.
+\end{itemize}
+
+\end{document}

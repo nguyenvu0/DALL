@@ -1,0 +1,7 @@
+set_property SRC_FILE_INFO {cfile:D:/DALL/risc_cpu_vivado/constraints_arty_z7.xdc rfile:../../../../constraints_arty_z7.xdc id:1} [current_design]
+set_property src_info {type:XDC file:1 line:4 export:INPUT save:INPUT read:READ} [current_design]
+set_property PACKAGE_PIN H16 [get_ports {clk}]
+set_property src_info {type:XDC file:1 line:9 export:INPUT save:INPUT read:READ} [current_design]
+set_property PACKAGE_PIN D19 [get_ports {reset}]
+set_property src_info {type:XDC file:1 line:13 export:INPUT save:INPUT read:READ} [current_design]
+set_property PACKAGE_PIN R14 [get_ports {halt}]
