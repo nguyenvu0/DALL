@@ -5,7 +5,8 @@ module CPU #(
 )(
     input clk,
     input reset,
-    output halt
+    output halt,
+    output [15:0] pc_out  // NEW: expose PC for debug
 );
 
     wire [15:0] pc;
@@ -32,16 +33,22 @@ module CPU #(
     integer                      rom_init_idx;
     assign instruction = instr_mem[pc[15:1]];
 
+
     initial begin
         for (rom_init_idx = 0; rom_init_idx < 32768; rom_init_idx = rom_init_idx + 1) begin
             instr_mem[rom_init_idx] = 16'h0000;
         end
-        instr_mem[0] = 16'hFFFF; // Default HALT program
-
-        if (PROGRAM_FILE != "") begin
-            $display("Loading program image from %s", PROGRAM_FILE);
-            $readmemh(PROGRAM_FILE, instr_mem);
-        end
+        
+        // Hardcoded program (because $readmemh doesn't work in synthesis!)
+        // Simple counter: count from 0 to 15 then halt
+        instr_mem[0] = 16'h3040;  // addi $1, $0, 0   -> $1 = 0
+        instr_mem[1] = 16'h3049;  // addi $1, $1, 1   -> $1++ (FIXED imm=1!)
+        instr_mem[2] = 16'h308F;  // addi $2, $0, 15  -> $2 = 15
+        instr_mem[3] = 16'h129C;  // slt $3, $1, $2   -> $3 = ($1 < 15) (FIXED encoding!)
+        instr_mem[4] = 16'h56FE;  // bneq $3,$0,-2    -> if $3!=0 goto addr 2
+        instr_mem[5] = 16'hFFFF;  // halt
+        
+        // Note: PROGRAM_FILE parameter ignored - hardcoded is more reliable for synthesis
     end
 
     ControlUnit cu(
@@ -86,5 +93,7 @@ module CPU #(
         .halt(halt)
     );
 
+    // Expose PC to output port
+    assign pc_out = pc;
 
 endmodule
